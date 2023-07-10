@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+contract Elastix is ERC20 {
+    using SafeMath for uint256;
+    
+    uint256 private constant INITIAL_SUPPLY = 20800000000000; // Initial supply of Elastix tokens
+    address private immutable tokenOwner; // Address allowed to increase/decrease supply
+    mapping(address => uint256) private tokenBalances; // Balances of token holders
+    
+    modifier onlyTokenOwner() {
+        require(msg.sender == tokenOwner, "Only token owner can perform this action");
+        _;
+    }
+    
+    constructor() ERC20("Elastix", "ELX") {
+        tokenOwner = msg.sender;
+        _mint(tokenOwner, INITIAL_SUPPLY);
+        tokenBalances[tokenOwner] = INITIAL_SUPPLY;
+    }
+    
+    // Function to increase the token supply
+    function increaseSupply(uint256 amount) external onlyTokenOwner {
+        _mint(tokenOwner, amount);
+        distributeTokens(amount);
+    }
+    
+    // Function to decrease the token supply
+    function decreaseSupply(uint256 amount) external onlyTokenOwner {
+        require(totalSupply() >= amount, "Insufficient token supply");
+        deductTokens(amount);
+        _burn(tokenOwner, amount);
+    }
+    
+    // Internal function to distribute tokens proportionally to all token holders
+    function distributeTokens(uint256 amount) internal {
+        uint256 totalBalance = totalSupply().sub(amount);
+        require(totalBalance > 0, "No token holders to distribute tokens");
+        
+        for (uint256 i = 0; i < _tokenHolders.length(); i++) {
+            address tokenHolder = _tokenHolders.at(i);
+            uint256 holderBalance = tokenBalances[tokenHolder];
+            uint256 additionalTokens = amount.mul(holderBalance).div(totalBalance);
+            _mint(tokenHolder, additionalTokens);
+            tokenBalances[tokenHolder] = holderBalance.add(additionalTokens);
+        }
+    }
+    
+    // Internal function to deduct tokens proportionally from all token holders
+    function deductTokens(uint256 amount) internal {
+        require(totalSupply() >= amount, "Insufficient token supply");
+        
+        for (uint256 i = 0; i < _tokenHolders.length(); i++) {
+            address tokenHolder = _tokenHolders.at(i);
+            uint256 holderBalance = tokenBalances[tokenHolder];
+            uint256 deductedTokens = amount.mul(holderBalance).div(totalSupply());
+            
+            if (deductedTokens >= holderBalance) {
+                _burn(tokenHolder, holderBalance);
+                tokenBalances[tokenHolder] = 0;
+            } else {
+                _burn(tokenHolder, deductedTokens);
+                tokenBalances[tokenHolder] = holderBalance.sub(deductedTokens);
+            }
+        }
+    }
+    
+    // Function to retrieve the addresses of all token holders
+    function getHolders() external view returns (address[] memory) {
+        address[] memory holders = new address[](_tokenHolders.length());
+        for (uint256 i = 0; i < _tokenHolders.length(); i++) {
+            holders[i] = _tokenHolders.at(i);
+        }
+        return holders;
+    }
+}
